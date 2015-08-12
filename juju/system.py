@@ -1,3 +1,6 @@
+__metaclass__ = type
+
+
 class System():
 
 
