@@ -133,8 +133,9 @@ class Connection(object):
     _upgrade_retry_delay_secs = 1
 
     def __init__(self, address, cacert, auth_tag, password, nonce="", env_uuid=""):
-        cert_path = self._write_cert(cacert)
+        self._cert_file = self._write_cert(cacert)
         endpoint = self._endpoint(address, env_uuid)
+        cert_path = self._cert_file.name
         self._connection = self._connect(endpoint, cert_path)
         self._info = self._authenticate(auth_tag, password, nonce)
         self._generate_facades()
@@ -163,7 +164,8 @@ class Connection(object):
             args['nonce'] = nonce
         return args
 
-    def _connect(self, endpoint, cert_path):
+    @staticmethod
+    def _connect(endpoint, cert_path):
         sslopt = {
             'ssl_version': ssl.PROTOCOL_TLSv1,
             'ca_certs': cert_path,
@@ -172,14 +174,16 @@ class Connection(object):
         return websocket.create_connection(
             endpoint, origin=endpoint, sslopt=sslopt)
 
-    def _endpoint(self, address, env_uuid):
+    @staticmethod
+    def _endpoint(address, env_uuid):
         """Given environment info return an authenticated client to it."""
         endpoint = "wss://%s" % address
         if env_uuid:
             endpoint += "/environment/%s/api" % env_uuid
         return endpoint
 
-    def _write_cert(self, cert):
+    @staticmethod
+    def _write_cert(cert):
         """Write ssl CA cert into a temp file, and return the filename."""
         # Note: we purposefully don't close the file as the temp file will be
         # deleted as soon as it is closed. Since we leave it open, the file
@@ -187,10 +191,10 @@ class Connection(object):
         # file. Also we have a reference to the temporary file that exists for
         # the lifetime of the connection instance. This way we are sure that
         # the temporary file is around for the duration of its use.
-        self._cert_file = f = tempfile.NamedTemporaryFile(suffix='.pem')
+        f = tempfile.NamedTemporaryFile(suffix='.pem')
         f.write(cert)
         f.flush()
-        return f.name
+        return f
 
     def _rpc(self, facade, func, params=None, version=None):
         if params is None:
