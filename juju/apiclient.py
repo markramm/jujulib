@@ -1,4 +1,10 @@
+import copy
+import functools
+import json
 import logging
+import ssl
+import tempfile
+import time
 import websocket
 
 # py 3 first and fall back to py 2
@@ -9,6 +15,8 @@ except ImportError:
     from httplib import HTTPSConnection
     from StringIO import StringIO
 
+from .configstore import ConfigStore
+
 
 # There are two pypi modules with the name websocket (python-websocket
 # and websocket) We utilize python-websocket, sniff and error if we
@@ -17,10 +25,246 @@ try:
     websocket.create_connection
 except AttributeError:
     raise RuntimeError(
-        "Expected 'python-websocket' "
+        "Expected 'python-websocket' package or 'websocket-client' from pypi, "
         "found incompatible gevent 'websocket'")
 
 
 websocket.logger = logging.getLogger("websocket")
 logger = logging.getLogger("juju")
 
+
+class UnknownFacade(Exception):
+    """UnknownFacade is raised if the server doesn't have the requested facade.
+
+    This can occur if asking for a non-existent facade, or a newer facade that
+    is not supported on the API server, or even a known facade that isn't
+    supported at the endpoint that has been connected to.
+
+    """
+    def __init__(self, *args):
+        super(UnknownFacade, self).__init__(*args)
+
+
+class FacadeVersionNotSupported(Exception):
+    """FacadeVersionNotSupported is raised if the version requested isn't supported.
+
+    """
+    def __init__(self, *args):
+        super(UnknownFacade, self).__init__(*args)
+
+
+class ServerError(Exception):
+    """Base exception class for particular server side errors.
+
+    If there is no specific error type for the error code returned from the
+    server, then this is the type of the returned error.
+
+    """
+    def __init__(self, error_code, message):
+        self.error_code = error_code
+        self.message = message
+
+    def __str__(self):
+        return "<ServerError - '{}'>".format(message)
+
+
+class NotImplementedError(ServerError):
+    """NotImplementedError is raised when a method does not exist.
+
+    The error could be caused due to either the method name being incorred, or
+    the facade version not being supported on the API server, or the facade
+    name itself not existing on the server.
+
+    If the Facade instances are being constructed through the Connection
+    instance, then the more specialized UnknownFacade and
+    FacadeVersionNotSupported errors will be raised, however if a Facade
+    instance is created through another method, the NotImplementedError will
+    be raised in the cases of bad facade names or versions.
+
+    """
+    def __init__(self, *args):
+        super(NotImplementedError, self).__init__(*args)
+
+
+
+def new_error(response):
+    """Constructs a specific exception type based on the ErrorCode."""
+    err_code = response.get("ErrorCode")
+    message = response.get("Error")
+    if err_code == "not implemented":
+        return NotImplementedError(err_code, message)
+    return ServerError(err_code, message)
+
+
+class Facade(object):
+    """The Facade instances provide convenient syntactic sugar for API calls.
+
+    Facade instances are constructed with a Connection, and facade name and
+    version. Any resulting method calls to a facade are translated into RPC
+    calls on the connection instance.
+
+    For example, calling the 'FullStatus' method on the client facade:
+
+        >>> client = Facade(connection, "Client")
+        >>> result = client.FullStatus()
+
+    This ends up being the same as:
+
+        >>> connection._rpc("Client", "FullStatus")
+
+    """
+
+    def __init__(self, connection, name, version=None):
+        self.connection = connection
+        self.name = name
+        self.version = version
+
+    def __getattribute__(self, attr):
+        try:
+            return object.__getattribute__(self, attr)
+        except AttributeError:
+            return functools.partial(self.connection._rpc, self.name, attr, version=self.version)
+
+
+class Connection(object):
+    """A connection represents an open, authenticated API connection."""
+    _request_id = 0
+    _upgrade_retry_count = 60
+    _upgrade_retry_delay_secs = 1
+
+    def __init__(self, address, cacert, auth_tag, password, nonce="", env_uuid=""):
+        cert_path = self._write_cert(cacert)
+        endpoint = self._endpoint(address, env_uuid)
+        self._connection = self._connect(endpoint, cert_path)
+        self._info = self._authenticate(auth_tag, password, nonce)
+        self._generate_facades()
+
+    def _authenticate(self, auth_tag, credentials, nonce):
+        # Start with version 2 of admin facade and work our way back.
+        for version in (2, 1, 0):
+            try:
+                self._auth_creds = self._login_args(version, auth_tag, credentials, nonce)
+                return self._rpc("Admin", "Login", self._auth_creds, version=version)
+            except NotImplementedError:
+                # do nothing and try the previous version
+                pass
+        raise RuntimeError("unexpected missing login command")
+
+    @staticmethod
+    def _login_args(version, auth_tag, credentials, nonce):
+        if version == 0:
+            args = {"AuthTag": auth_tag, "Password": credentials}
+            if nonce is not None:
+                args['Nonce'] = nonce
+            return args
+        # Otherwise, use the newer login structure.
+        args = {"auth-tag": auth_tag, "credentials": credentials}
+        if nonce is not None:
+            args['nonce'] = nonce
+        return args
+
+    def _connect(self, endpoint, cert_path):
+        sslopt = {
+            'ssl_version': ssl.PROTOCOL_TLSv1,
+            'ca_certs': cert_path,
+            'check_hostname': False,
+        }
+        return websocket.create_connection(
+            endpoint, origin=endpoint, sslopt=sslopt)
+
+    def _endpoint(self, address, env_uuid):
+        """Given environment info return an authenticated client to it."""
+        endpoint = "wss://%s" % address
+        if env_uuid:
+            endpoint += "/environment/%s/api" % env_uuid
+        return endpoint
+
+    def _write_cert(self, cert):
+        """Write ssl CA cert into a temp file, and return the filename."""
+        # Note: we purposefully don't close the file as the temp file will be
+        # deleted as soon as it is closed. Since we leave it open, the file
+        # will be closed as the process finishes, and it removes the temporary
+        # file. Also we have a reference to the temporary file that exists for
+        # the lifetime of the connection instance. This way we are sure that
+        # the temporary file is around for the duration of its use.
+        self._cert_file = f = tempfile.NamedTemporaryFile(suffix='.pem')
+        f.write(cert)
+        f.flush()
+        return f.name
+
+    def _rpc(self, facade, func, params=None, version=None):
+        if params is None:
+            params = {}
+        op = {
+            'Type': facade,
+            'Request': func,
+            'Params': params,
+            'RequestId': self._request_id
+        }
+        if version is not None:
+            op['Version'] = version
+        self._request_id += 1
+        result = self._rpc_retry_if_upgrading(op)
+        if 'Error' in result:
+            raise new_error(result)
+        return result['Response']
+
+    def _rpc_retry_if_upgrading(self, op):
+        """If Juju is upgrading when the specified rpc call is made,
+        retry the call."""
+        retry_count = 0
+        result = {'Response': ''}
+        while retry_count <= self._upgrade_retry_count:
+            result = self._send_request(op)
+            if 'Error' in result and 'upgrade in progress' in result['Error']:
+                logger.info("Juju upgrade in progress...")
+                retry_count += 1
+                time.sleep(self._upgrade_retry_delay_secs)
+                continue
+            break
+        return result
+
+    def _send_request(self, op):
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("rpc request:\n%s" % (json.dumps(op, indent=2)))
+        self._connection.send(json.dumps(op))
+        raw = self._connection.recv()
+        result = json.loads(raw)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("rpc response:\n%s" % (json.dumps(result, indent=2)))
+        return result
+
+    def _generate_facades(self):
+        self._facade_versions = dict([
+            (facade['Name'], facade['Versions'])
+            for facade in self._info['facades']
+        ])
+
+    def get_facade(self, name, version=None):
+        try:
+            versions = self._facade_versions[name]
+            if version is None:
+                version = max(versions)
+            if version in versions:
+                return Facade(self, name, version)
+            raise FacadeVersionNotSupported("{} version {}".format(name, version))
+        except KeyError:
+            raise UnknownFacade(name)
+
+
+def open_environment(env_name):
+    """Return an API connection to a named environment.
+
+    The specified environment name is looked up in the user's config store.
+    The resulting connection is to the environment endpoint.
+
+    """
+    store = ConfigStore()
+    info = store.connection_info(env_name)
+    auth_tag = "user-{}".format(info['user'])
+    credentials = info['password']
+    return Connection(
+        info['state-servers'][0],
+        info['ca-cert'],
+        auth_tag, credentials,
+        env_uuid=info['environ-uuid'])

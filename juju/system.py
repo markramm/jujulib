@@ -1,7 +1,5 @@
-__metaclass__ = type
 
-
-class System():
+class System(object):
 
 
 	def __init__(self):

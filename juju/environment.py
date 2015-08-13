@@ -1,10 +1,8 @@
-__metaclass__ = type
-
 from .configstore import ConfigStore
 from .exceptions import EnvironmentNotBootstrapped
 
 
-class Environment():
+class Environment(object):
     """Represents an environment in a Juju System.
 
     The environment may be the initial environment of the system itself.
@@ -29,3 +27,4 @@ class Environment():
 
     def status():
         # work in progress here...
+        pass
