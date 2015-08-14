@@ -1,4 +1,5 @@
 help:
+	@echo "check - clean the environment, install, lint, and run tests"
 	@echo "clean - remove Python file artifacts"
 	@echo "clean-all - remove *all* build artifacts"
 	@echo "clean-env - remove virtual environment"
@@ -58,6 +59,9 @@ test: $(NOSETESTS)
 .PHONY: lint
 lint: $(FLAKE8)
 	$(FLAKE8) juju tests
+
+.PHONY: check
+check: clean-all lint test
 
 ###############
 # CLEAN TARGETS
