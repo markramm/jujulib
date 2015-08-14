@@ -22,10 +22,10 @@ PYTHON := $(BIN)python
 # SETUP
 #######
 $(PYTHON):
-	virtualenv env
+	virtualenv $(ENV)
 
 $(PIP):
-	virtualenv env
+	virtualenv $(ENV)
 
 .PHONY: env
 env: $(BIN)python
@@ -70,7 +70,7 @@ clean:
 
 .PHONY: clean-env
 clean-env:
-	rm -rf env
+	rm -rf $(ENV)
 
 .PHONY: clean-all
 clean-all: clean clean-env
