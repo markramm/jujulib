@@ -28,7 +28,7 @@ $(PIP):
 	virtualenv $(ENV)
 
 .PHONY: env
-env: $(BIN)python
+env: $(PYTHON)
 
 ##############
 # DEPENDENCIES
@@ -42,7 +42,7 @@ deps: $(PIP)
 	$(PIP) install -r requirements.txt
 
 # Nose is our test requirements canary
-$(NOSETESTS): $(BIN)python
+$(NOSETESTS): $(PYTHON) deps
 	$(MAKE) test-deps
 
 $(FLAKE8): $(NOSETESTS)
