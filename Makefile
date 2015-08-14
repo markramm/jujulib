@@ -4,6 +4,7 @@ help:
 	@echo "clean-env - remove virtual environment"
 	@echo "deps - install the dependencies"
 	@echo "env - set up the virtual environment"
+	@echo "lint - check Python lint"
 	@echo "test - run tests"
 	@echo "test-deps - install the dependencies needed for running tests"
 
@@ -12,6 +13,7 @@ help:
 ###########
 ENV := env/
 BIN := $(ENV)bin/
+FLAKE8 := $(BIN)flake8
 NOSETESTS := $(BIN)nosetests
 PIP := $(BIN)pip
 PYTHON := $(BIN)python
@@ -19,10 +21,10 @@ PYTHON := $(BIN)python
 #######
 # SETUP
 #######
-$(BIN)python:
+$(PYTHON):
 	virtualenv env
 
-$(BIN)pip:
+$(PIP):
 	virtualenv env
 
 .PHONY: env
@@ -43,6 +45,8 @@ deps: $(PIP)
 $(NOSETESTS): $(BIN)python
 	$(MAKE) test-deps
 
+$(FLAKE8): $(NOSETESTS)
+
 #####################
 # DEVELOPMENT HELPERS
 #####################
@@ -50,6 +54,10 @@ $(NOSETESTS): $(BIN)python
 .PHONY: test
 test: $(NOSETESTS)
 	$(NOSETESTS)
+
+.PHONY: lint
+lint: $(FLAKE8)
+	$(FLAKE8) juju tests
 
 ###############
 # CLEAN TARGETS
