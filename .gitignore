@@ -6,8 +6,10 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.canary_requirements
+.canary_test_requirements
 .Python
-env/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -39,7 +41,6 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
-nosetests.xml
 coverage.xml
 *,cover
 

@@ -20,7 +20,7 @@ test_requirements = parse_requirements('test-requirements.txt')
 
 setup(
     name='jujulib',
-    version='0.1.0',
+    version='0.0.1',
     description='Jujulib is a python library designed to automate Juju.',
     long_description=README + '\n\n' + CHANGES,
     author='Mark Ramm-Christensen',

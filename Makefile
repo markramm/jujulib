@@ -12,12 +12,14 @@ help:
 ###########
 # VARIABLES
 ###########
-ENV := env
+ENV := .venv
 BIN := $(ENV)/bin
 FLAKE8 := $(BIN)/flake8
 PIP := $(BIN)/pip
 PYTEST := $(BIN)/py.test
 PYTHON := $(BIN)/python
+CANARY_REQ := .canary_requirements
+CANARY_TEST_REQ := .canary_test_requirements
 
 #######
 # SETUP
@@ -28,36 +30,35 @@ $(PYTHON):
 $(PIP):
 	virtualenv $(ENV)
 
-.PHONY: env
-env: $(PYTHON)
+$(ENV): $(PYTHON)
 
 ##############
 # DEPENDENCIES
 ##############
 .PHONY: test-deps
-test-deps: $(PIP)
+test-deps: $(CANARY_TEST_REQ) deps
+
+$(CANARY_TEST_REQ): $(PIP) test-requirements.txt
 	$(PIP) install -r test-requirements.txt
+	touch $(CANARY_TEST_REQ)
 
 .PHONY: deps
-deps: $(PIP)
+deps: $(CANARY_REQ)
+
+$(CANARY_REQ): $(PIP) requirements.txt
 	$(PIP) install -r requirements.txt
-
-# Nose is our test requirements canary
-$(PYTEST): $(PYTHON) deps
-	$(MAKE) test-deps
-
-$(FLAKE8): $(PYTEST)
+	touch $(CANARY_REQ)
 
 #####################
 # DEVELOPMENT HELPERS
 #####################
 
 .PHONY: test
-test: $(PYTEST)
+test: test-deps
 	$(PYTEST) tests
 
 .PHONY: lint
-lint: $(FLAKE8)
+lint: test-deps
 	$(FLAKE8) juju tests
 
 .PHONY: check
@@ -68,8 +69,8 @@ check: clean-all lint test
 ###############
 .PHONY: clean
 clean:
-	find . -name '*.pyc' -exec rm -f {} +
-	find . -name '*.pyo' -exec rm -f {} +
+	find . -name $(ENV) -prune  -o -name '*.pyc' -exec rm -f {} +
+	find . -name $(ENV) -prune -o -name '*.pyo' -exec rm -f {} +
 	find . -name '*~' -exec rm -f {} +
 
 .PHONY: clean-env
