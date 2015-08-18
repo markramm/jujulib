@@ -12,12 +12,12 @@ help:
 ###########
 # VARIABLES
 ###########
-ENV := env/
-BIN := $(ENV)bin/
-FLAKE8 := $(BIN)flake8
-NOSETESTS := $(BIN)nosetests
-PIP := $(BIN)pip
-PYTHON := $(BIN)python
+ENV := env
+BIN := $(ENV)/bin
+FLAKE8 := $(BIN)/flake8
+PIP := $(BIN)/pip
+PYTEST := $(BIN)/py.test
+PYTHON := $(BIN)/python
 
 #######
 # SETUP
@@ -43,18 +43,18 @@ deps: $(PIP)
 	$(PIP) install -r requirements.txt
 
 # Nose is our test requirements canary
-$(NOSETESTS): $(PYTHON) deps
+$(PYTEST): $(PYTHON) deps
 	$(MAKE) test-deps
 
-$(FLAKE8): $(NOSETESTS)
+$(FLAKE8): $(PYTEST)
 
 #####################
 # DEVELOPMENT HELPERS
 #####################
 
 .PHONY: test
-test: $(NOSETESTS)
-	$(NOSETESTS)
+test: $(PYTEST)
+	$(PYTEST) tests
 
 .PHONY: lint
 lint: $(FLAKE8)
