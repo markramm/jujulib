@@ -1,19 +1,11 @@
-import copy
 import functools
 import json
 import logging
 import ssl
 import tempfile
 import time
-import websocket
 
-# py 3 first and fall back to py 2
-try:
-    from http.client import HTTPSConnection
-    from io import StringIO
-except ImportError:
-    from httplib import HTTPSConnection
-    from StringIO import StringIO
+import websocket
 
 from .configstore import ConfigStore
 
@@ -41,16 +33,10 @@ class UnknownFacade(Exception):
     supported at the endpoint that has been connected to.
 
     """
-    def __init__(self, *args):
-        super(UnknownFacade, self).__init__(*args)
 
 
 class FacadeVersionNotSupported(Exception):
-    """FacadeVersionNotSupported is raised if the version requested isn't supported.
-
-    """
-    def __init__(self, *args):
-        super(UnknownFacade, self).__init__(*args)
+    """Raised if the requested facade version isn't supported."""
 
 
 class ServerError(Exception):
@@ -61,18 +47,19 @@ class ServerError(Exception):
 
     """
     def __init__(self, error_code, message):
+        super(ServerError, self).__init__(message)
         self.error_code = error_code
         self.message = message
 
     def __str__(self):
-        return "<ServerError - '{}'>".format(message)
+        return "<ServerError - '{}'>".format(self.message)
 
 
 class NotImplementedError(ServerError):
     """NotImplementedError is raised when a method does not exist.
 
-    The error could be caused due to either the method name being incorred, or
-    the facade version not being supported on the API server, or the facade
+    The error could be caused due to either the method name being incorrect,
+    or the facade version not being supported on the API server, or the facade
     name itself not existing on the server.
 
     If the Facade instances are being constructed through the Connection
@@ -84,7 +71,6 @@ class NotImplementedError(ServerError):
     """
     def __init__(self, *args):
         super(NotImplementedError, self).__init__(*args)
-
 
 
 def new_error(response):
@@ -110,7 +96,7 @@ class Facade(object):
 
     This ends up being the same as:
 
-        >>> connection._rpc("Client", "FullStatus")
+        >>> connection.rpc("Client", "FullStatus")
 
     """
 
@@ -119,11 +105,9 @@ class Facade(object):
         self.name = name
         self.version = version
 
-    def __getattribute__(self, attr):
-        try:
-            return object.__getattribute__(self, attr)
-        except AttributeError:
-            return functools.partial(self.connection._rpc, self.name, attr, version=self.version)
+    def __getattr__(self, attr):
+        return functools.partial(
+            self.connection.rpc, self.name, attr, version=self.version)
 
 
 class Connection(object):
@@ -132,20 +116,47 @@ class Connection(object):
     _upgrade_retry_count = 60
     _upgrade_retry_delay_secs = 1
 
-    def __init__(self, address, cacert, auth_tag, password, nonce="", env_uuid=""):
+    def __init__(self, address, cacert, auth_tag, credentials,
+                 nonce="", env_uuid=""):
+        """The constructor expects the following parameters:
+
+        address: an string representing <host>:<port> where the host is either
+        an IP address or a hostname.
+
+        cacert: the standard textual PEM representation of the certificate
+        used by the API server to authenticate requests.
+
+        auth_tag: a string representation of the user, machine, or unit tag
+        that we are connecting to the API as.
+
+        credentials: a string representing the password or in the future, a
+        macaroon that is used to authenticate the entity represented by the
+        auth_tag.
+
+        nonce: a string representing the nonce used when provisioning the
+        machine. This is only used by machine connections to the API server.
+
+        env_uuid: a string representation of the environment UUID. If the
+        env_uuid is not specified the connection path is the root ('/'), and
+        for modern Juju systems will be a connection to the System, but not an
+        Environment.
+
+        """
         self._cert_file = self._write_cert(cacert)
         endpoint = self._endpoint(address, env_uuid)
         cert_path = self._cert_file.name
         self._connection = self._connect(endpoint, cert_path)
-        self._info = self._authenticate(auth_tag, password, nonce)
+        self._info = self._authenticate(auth_tag, credentials, nonce)
         self._generate_facades()
 
     def _authenticate(self, auth_tag, credentials, nonce):
         # Start with version 2 of admin facade and work our way back.
         for version in (2, 1, 0):
             try:
-                self._auth_creds = self._login_args(version, auth_tag, credentials, nonce)
-                return self._rpc("Admin", "Login", self._auth_creds, version=version)
+                self._auth_creds = self._login_args(
+                    version, auth_tag, credentials, nonce)
+                return self.rpc(
+                    "Admin", "Login", self._auth_creds, version=version)
             except NotImplementedError:
                 # do nothing and try the previous version
                 pass
@@ -176,7 +187,6 @@ class Connection(object):
 
     @staticmethod
     def _endpoint(address, env_uuid):
-        """Given environment info return an authenticated client to it."""
         endpoint = "wss://%s" % address
         if env_uuid:
             endpoint += "/environment/%s/api" % env_uuid
@@ -196,7 +206,7 @@ class Connection(object):
         f.flush()
         return f
 
-    def _rpc(self, facade, func, params=None, version=None):
+    def rpc(self, facade, func, params=None, version=None):
         if params is None:
             params = {}
         op = {
@@ -217,7 +227,6 @@ class Connection(object):
         """If Juju is upgrading when the specified rpc call is made,
         retry the call."""
         retry_count = 0
-        result = {'Response': ''}
         while retry_count <= self._upgrade_retry_count:
             result = self._send_request(op)
             if 'Error' in result and 'upgrade in progress' in result['Error']:
@@ -251,7 +260,8 @@ class Connection(object):
                 version = max(versions)
             if version in versions:
                 return Facade(self, name, version)
-            raise FacadeVersionNotSupported("{} version {}".format(name, version))
+            raise FacadeVersionNotSupported(
+                "{} version {}".format(name, version))
         except KeyError:
             raise UnknownFacade(name)
 
