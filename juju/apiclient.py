@@ -1,4 +1,3 @@
-import copy
 import functools
 import json
 import logging
@@ -6,14 +5,6 @@ import ssl
 import tempfile
 import time
 import websocket
-
-# py 3 first and fall back to py 2
-try:
-    from http.client import HTTPSConnection
-    from io import StringIO
-except ImportError:
-    from httplib import HTTPSConnection
-    from StringIO import StringIO
 
 from .configstore import ConfigStore
 
@@ -41,16 +32,10 @@ class UnknownFacade(Exception):
     supported at the endpoint that has been connected to.
 
     """
-    def __init__(self, *args):
-        super(UnknownFacade, self).__init__(*args)
 
 
 class FacadeVersionNotSupported(Exception):
-    """FacadeVersionNotSupported is raised if the version requested isn't supported.
-
-    """
-    def __init__(self, *args):
-        super(UnknownFacade, self).__init__(*args)
+    """Raised if the requested facade version isn't supported."""
 
 
 class ServerError(Exception):
@@ -61,18 +46,19 @@ class ServerError(Exception):
 
     """
     def __init__(self, error_code, message):
+        super(ServerError, self).__init__(message)
         self.error_code = error_code
         self.message = message
 
     def __str__(self):
-        return "<ServerError - '{}'>".format(message)
+        return "<ServerError - '{}'>".format(self.message)
 
 
 class NotImplementedError(ServerError):
     """NotImplementedError is raised when a method does not exist.
 
-    The error could be caused due to either the method name being incorred, or
-    the facade version not being supported on the API server, or the facade
+    The error could be caused due to either the method name being incorrect,
+    or the facade version not being supported on the API server, or the facade
     name itself not existing on the server.
 
     If the Facade instances are being constructed through the Connection
@@ -84,7 +70,6 @@ class NotImplementedError(ServerError):
     """
     def __init__(self, *args):
         super(NotImplementedError, self).__init__(*args)
-
 
 
 def new_error(response):
@@ -123,7 +108,8 @@ class Facade(object):
         try:
             return object.__getattribute__(self, attr)
         except AttributeError:
-            return functools.partial(self.connection._rpc, self.name, attr, version=self.version)
+            return functools.partial(
+                self.connection._rpc, self.name, attr, version=self.version)
 
 
 class Connection(object):
@@ -132,7 +118,8 @@ class Connection(object):
     _upgrade_retry_count = 60
     _upgrade_retry_delay_secs = 1
 
-    def __init__(self, address, cacert, auth_tag, password, nonce="", env_uuid=""):
+    def __init__(self, address, cacert, auth_tag, password,
+                 nonce="", env_uuid=""):
         self._cert_file = self._write_cert(cacert)
         endpoint = self._endpoint(address, env_uuid)
         cert_path = self._cert_file.name
@@ -144,8 +131,10 @@ class Connection(object):
         # Start with version 2 of admin facade and work our way back.
         for version in (2, 1, 0):
             try:
-                self._auth_creds = self._login_args(version, auth_tag, credentials, nonce)
-                return self._rpc("Admin", "Login", self._auth_creds, version=version)
+                self._auth_creds = self._login_args(
+                    version, auth_tag, credentials, nonce)
+                return self._rpc(
+                    "Admin", "Login", self._auth_creds, version=version)
             except NotImplementedError:
                 # do nothing and try the previous version
                 pass
@@ -251,7 +240,8 @@ class Connection(object):
                 version = max(versions)
             if version in versions:
                 return Facade(self, name, version)
-            raise FacadeVersionNotSupported("{} version {}".format(name, version))
+            raise FacadeVersionNotSupported(
+                "{} version {}".format(name, version))
         except KeyError:
             raise UnknownFacade(name)
 
