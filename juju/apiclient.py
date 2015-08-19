@@ -95,7 +95,7 @@ class Facade(object):
 
     This ends up being the same as:
 
-        >>> connection._rpc("Client", "FullStatus")
+        >>> connection.rpc("Client", "FullStatus")
 
     """
 
@@ -104,12 +104,9 @@ class Facade(object):
         self.name = name
         self.version = version
 
-    def __getattribute__(self, attr):
-        try:
-            return object.__getattribute__(self, attr)
-        except AttributeError:
-            return functools.partial(
-                self.connection._rpc, self.name, attr, version=self.version)
+    def __getattr__(self, attr):
+        return functools.partial(
+            self.connection.rpc, self.name, attr, version=self.version)
 
 
 class Connection(object):
@@ -133,7 +130,7 @@ class Connection(object):
             try:
                 self._auth_creds = self._login_args(
                     version, auth_tag, credentials, nonce)
-                return self._rpc(
+                return self.rpc(
                     "Admin", "Login", self._auth_creds, version=version)
             except NotImplementedError:
                 # do nothing and try the previous version
@@ -185,7 +182,7 @@ class Connection(object):
         f.flush()
         return f
 
-    def _rpc(self, facade, func, params=None, version=None):
+    def rpc(self, facade, func, params=None, version=None):
         if params is None:
             params = {}
         op = {

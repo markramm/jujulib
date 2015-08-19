@@ -9,21 +9,21 @@ class TestFacade(unittest.TestCase):
 
     def test_simple_call_no_version(self):
         connection = mock.Mock()
-        connection._rpc = mock.Mock(return_value='called')
+        connection.rpc = mock.Mock(return_value='called')
 
         facade = juju.apiclient.Facade(connection, 'FacadeName')
         result = facade.SomeMethod('args')
         self.assertEqual(result, 'called')
-        connection._rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=None)
+        connection.rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=None)
 
     def test_simple_call_explicit_version(self):
         connection = mock.Mock()
-        connection._rpc = mock.Mock(return_value='called')
+        connection.rpc = mock.Mock(return_value='called')
 
         facade = juju.apiclient.Facade(connection, 'FacadeName', 3)
         result = facade.SomeMethod('args')
         self.assertEqual(result, 'called')
-        connection._rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=3)
+        connection.rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=3)
 
 
 class TestConnection(unittest.TestCase):
