@@ -76,6 +76,8 @@ clean:
 .PHONY: clean-env
 clean-env:
 	rm -rf $(ENV)
+	rm $(CANARY_REQ)
+	rm $(CANARY_TEST_REQ)
 
 .PHONY: clean-all
 clean-all: clean clean-env
