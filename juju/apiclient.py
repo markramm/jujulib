@@ -4,6 +4,7 @@ import logging
 import ssl
 import tempfile
 import time
+
 import websocket
 
 from .configstore import ConfigStore
@@ -115,13 +116,37 @@ class Connection(object):
     _upgrade_retry_count = 60
     _upgrade_retry_delay_secs = 1
 
-    def __init__(self, address, cacert, auth_tag, password,
+    def __init__(self, address, cacert, auth_tag, credentials,
                  nonce="", env_uuid=""):
+        """The constructor expects the following parameters:
+
+        address: an string representing <host>:<port> where the host is either
+        an IP address or a hostname.
+
+        cacert: the standard textual PEM representation of the certificate
+        used by the API server to authenticate requests.
+
+        auth_tag: a string representation of the user, machine, or unit tag
+        that we are connecting to the API as.
+
+        credentials: a string representing the password or in the future, a
+        macaroon that is used to authenticate the entity represented by the
+        auth_tag.
+
+        nonce: a string representing the nonce used when provisioning the
+        machine. This is only used by machine connections to the API server.
+
+        env_uuid: a string representation of the environment UUID. If the
+        env_uuid is not specified the connection path is the root ('/'), and
+        for modern Juju systems will be a connection to the System, but not an
+        Environment.
+
+        """
         self._cert_file = self._write_cert(cacert)
         endpoint = self._endpoint(address, env_uuid)
         cert_path = self._cert_file.name
         self._connection = self._connect(endpoint, cert_path)
-        self._info = self._authenticate(auth_tag, password, nonce)
+        self._info = self._authenticate(auth_tag, credentials, nonce)
         self._generate_facades()
 
     def _authenticate(self, auth_tag, credentials, nonce):
@@ -162,7 +187,6 @@ class Connection(object):
 
     @staticmethod
     def _endpoint(address, env_uuid):
-        """Given environment info return an authenticated client to it."""
         endpoint = "wss://%s" % address
         if env_uuid:
             endpoint += "/environment/%s/api" % env_uuid
@@ -203,7 +227,6 @@ class Connection(object):
         """If Juju is upgrading when the specified rpc call is made,
         retry the call."""
         retry_count = 0
-        result = {'Response': ''}
         while retry_count <= self._upgrade_retry_count:
             result = self._send_request(op)
             if 'Error' in result and 'upgrade in progress' in result['Error']:

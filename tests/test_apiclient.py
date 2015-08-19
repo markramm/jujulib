@@ -1,6 +1,7 @@
-import mock
 import os
 import unittest
+
+import mock
 
 import juju.apiclient
 
@@ -14,7 +15,8 @@ class TestFacade(unittest.TestCase):
         facade = juju.apiclient.Facade(connection, 'FacadeName')
         result = facade.SomeMethod('args')
         self.assertEqual(result, 'called')
-        connection.rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=None)
+        connection.rpc.assert_called_with(
+            'FacadeName', 'SomeMethod', 'args', version=None)
 
     def test_simple_call_explicit_version(self):
         connection = mock.Mock()
@@ -23,7 +25,8 @@ class TestFacade(unittest.TestCase):
         facade = juju.apiclient.Facade(connection, 'FacadeName', 3)
         result = facade.SomeMethod('args')
         self.assertEqual(result, 'called')
-        connection.rpc.assert_called_with('FacadeName', 'SomeMethod', 'args', version=3)
+        connection.rpc.assert_called_with(
+            'FacadeName', 'SomeMethod', 'args', version=3)
 
 
 class TestConnection(unittest.TestCase):
@@ -49,18 +52,36 @@ class TestConnection(unittest.TestCase):
 
     def test_login_args(self):
         self.assertEqual(
-            juju.apiclient.Connection._login_args(0, 'username', 'password', None),
-            {'AuthTag': 'username', 'Password': 'password'})
+            juju.apiclient.Connection._login_args(
+                0, 'username', 'password', None),
+            {
+                'AuthTag': 'username',
+                'Password': 'password',
+                })
         self.assertEqual(
-            juju.apiclient.Connection._login_args(0, 'username', 'password', 'a nonce'),
-            {'AuthTag': 'username', 'Password': 'password', 'Nonce': 'a nonce'})
+            juju.apiclient.Connection._login_args(
+                0, 'username', 'password', 'a nonce'),
+            {
+                'AuthTag': 'username',
+                'Password': 'password',
+                'Nonce': 'a nonce',
+            })
         for version in (1, 2):
             self.assertEqual(
-                juju.apiclient.Connection._login_args(version, 'username', 'password', None),
-                {'auth-tag': 'username', 'credentials': 'password'})
+                juju.apiclient.Connection._login_args(
+                    version, 'username', 'password', None),
+                {
+                    'auth-tag': 'username',
+                    'credentials': 'password',
+                })
             self.assertEqual(
-                juju.apiclient.Connection._login_args(version, 'username', 'password', 'a nonce'),
-                {'auth-tag': 'username', 'credentials': 'password', 'nonce': 'a nonce'})
+                juju.apiclient.Connection._login_args(
+                    version, 'username', 'password', 'a nonce'),
+                {
+                    'auth-tag': 'username',
+                    'credentials': 'password',
+                    'nonce': 'a nonce',
+                })
 
     def test_endpoint(self):
         address = 'localhost:12345'
