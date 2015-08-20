@@ -74,7 +74,6 @@ check: clean-all lint test
 dist: clean test-deps
 	$(PYTHON) setup.py sdist
 	$(PYTHON) setup.py bdist_wheel
-	ls dist
 
 .PHONY: release
 release: dist
