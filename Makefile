@@ -2,12 +2,15 @@ help:
 	@echo "check - clean the environment, install, lint, and run tests"
 	@echo "clean - remove Python file artifacts"
 	@echo "clean-all - remove *all* build artifacts"
+	@echo "clean-build - remove build artifacts"
 	@echo "clean-env - remove virtual environment"
 	@echo "deps - install the dependencies"
+	@echo "dist - package the project"
 	@echo "env - set up the virtual environment"
 	@echo "lint - check Python lint"
 	@echo "test - run tests"
 	@echo "test-deps - install the dependencies needed for running tests"
+	@echo "release - package and upload a release"
 
 ###########
 # VARIABLES
@@ -64,6 +67,19 @@ lint: test-deps
 .PHONY: check
 check: clean-all lint test
 
+######
+# DIST
+######
+.PHONY: sdist
+dist: clean test-deps
+	$(PYTHON) setup.py sdist
+	$(PYTHON) setup.py bdist_wheel
+
+.PHONY: release
+release: dist
+	python setup.py sdist upload
+	python setup.py bdist_wheel upload
+
 ###############
 # CLEAN TARGETS
 ###############
@@ -73,6 +89,11 @@ clean:
 	find . -name $(ENV) -prune -o -name '*.pyo' -exec rm -f {} +
 	find . -name '*~' -exec rm -f {} +
 
+.PHONY: clean-build
+clean-build:
+	rm -rf dist/
+	rm -rf build/
+
 .PHONY: clean-env
 clean-env:
 	rm -rf $(ENV)
@@ -80,5 +101,5 @@ clean-env:
 	rm -f $(CANARY_TEST_REQ)
 
 .PHONY: clean-all
-clean-all: clean clean-env
+clean-all: clean clean-env clean-build
 	rm -rf jujulib.egg-info/
